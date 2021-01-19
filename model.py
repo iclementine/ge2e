@@ -9,6 +9,7 @@ from scipy.interpolate import interp1d
 from sklearn.metrics import roc_curve
 from scipy.optimize import brentq
 
+__DEBUG__ = []
 
 class SpeakerEncoder(nn.Layer):
     def __init__(self, n_mel, num_layers, hidden_size, output_size):
@@ -31,7 +32,7 @@ class SpeakerEncoder(nn.Layer):
     def forward(self, utterances, initial_states=None):
         out, (h, c) = self.lstm(utterances, initial_states)
         embeds = F.relu(self.linear(h[-1]))
-        normalized_embeds = F.normalize(embeds)
+        normalized_embeds = F.normalize(embeds, epsilon=0.0)
         return normalized_embeds
 
     def similarity_matrix(self, embeds):
@@ -57,11 +58,17 @@ class SpeakerEncoder(nn.Layer):
                         normalized_centroids_excl.reshape([-1, embed_dim, 1])) # (NM, 1, 1)
         p2 = p2.reshape([-1]) # （NM)
         # print("p2: ", p2.shape)
-        index = paddle.arange(0, speakers_per_batch * utterances_per_speaker, dtype="int64").reshape([speakers_per_batch, utterances_per_speaker])
-        index = index * speakers_per_batch + paddle.arange(0, speakers_per_batch, dtype="int64").unsqueeze(-1)
-        index = paddle.reshape(index, [-1])
-        # print(index.shape)
-        p = paddle.scatter(p1, index, p2)
+        with paddle.no_grad():
+            index = paddle.arange(0, speakers_per_batch * utterances_per_speaker, dtype="int64").reshape([speakers_per_batch, utterances_per_speaker])
+            index = index * speakers_per_batch + paddle.arange(0, speakers_per_batch, dtype="int64").unsqueeze(-1)
+            # import pdb; pdb.set_trace()
+            index = paddle.reshape(index, [-1])
+        ones = paddle.ones([speakers_per_batch * utterances_per_speaker * speakers_per_batch])
+        zeros = paddle.zeros_like(index, dtype=ones.dtype)
+        mask_p1 = paddle.scatter(ones, index, zeros)
+        p = p1 * mask_p1 + (1 - mask_p1) * paddle.scatter(ones, index, p2)
+        # p = paddle.scatter(p1, index, p2)
+        __DEBUG__.append(embeds)
         
         p = p * self.similarity_weight + self.similarity_bias # neg
         p = p.reshape([speakers_per_batch * utterances_per_speaker, speakers_per_batch])
@@ -85,7 +92,7 @@ class SpeakerEncoder(nn.Layer):
         speakers_per_batch, utterances_per_speaker = embeds.shape[:2]
         
         # Loss
-        sim_matrix = self.similarity_matrix(embeds)
+        sim_matrix, *_ = self.similarity_matrix(embeds)
         sim_matrix = sim_matrix.reshape(
             [speakers_per_batch * utterances_per_speaker, speakers_per_batch])
         target = paddle.arange(0, speakers_per_batch, dtype="int64").unsqueeze(-1)

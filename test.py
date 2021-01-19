@@ -54,15 +54,16 @@ M1, p1, q1 = model1.similarity_matrix(embed1.reshape(5, 4, -1))
 M2, p2, q2 = model2.similarity_matrix(embed2.reshape([5, 4, -1]))
 
 # backward sim matrix
-if True:
+if False:
     print("similarity matrix: ")
-    print(p1.data.cpu().numpy())
+    print(M1.data.cpu().numpy())
     print("=============")
-    print(p2.numpy())
+    print(M2.numpy())
     print("=============")
-    p1.sum().backward()
-    p2.sum().backward()
+    M1.sum().backward()
+    M2.sum().backward()
 
+    import pdb; pdb.set_trace()
     print("linear weight grad: ")
     print(model1.linear.weight.grad.data.cpu().numpy())
     print("=============")
@@ -75,7 +76,7 @@ loss1, eer1 = model1.loss(embed1.reshape(5, 4, -1))
 loss2, eer2 = model2.loss(embed2.reshape([5, 4, -1]))
 
 
-if False:
+if True:
     # TODO: 继续对齐 Loss backward 的梯度
     print("loss1: ", float(loss1))
     print("loss2: ", float(loss2))
@@ -84,9 +85,17 @@ if False:
 
     print("model1 grad:", float(model1.similarity_bias.grad))
     print("model2 grad:", float(model2.similarity_bias.grad))
+
+    print("linear weight grad: ")
+    print(model1.lstm.weight_hh_l0.grad.data.cpu().numpy())
+    print("=============")
+    print(model2.lstm.weight_hh_l0.grad)
+    print("=============")
+    import pdb; pdb.set_trace()
     exit(0)
 
-import pdb; pdb.set_trace()
+
+
 
 optim1.step()
 optim2.step()

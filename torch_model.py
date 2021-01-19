@@ -7,6 +7,8 @@ from scipy.interpolate import interp1d
 from sklearn.metrics import roc_curve
 from scipy.optimize import brentq
 
+__DEBUG__ = []
+
 class SpeakerEncoder(nn.Module):
     # 实在是有点丑陋， 虽然这是一个 model parallel 的模型，但是把设备作为参数还是有点丑陋啊
     # 而且所有的形状相关的东西竟然都不在这里面， 而是弄成了 hparams
@@ -83,7 +85,7 @@ class SpeakerEncoder(nn.Module):
         # print(p1.shape)
         p2 = torch.bmm(embeds.reshape(-1, 1, embed_dim), normalized_centroids_excl.reshape(-1, embed_dim, 1)).squeeze(-1) # （NM, 1)
         # print(p2.shape)
-        # __DEBUG__.append(embeds); embeds.retain_grad()
+        __DEBUG__.append(embeds); embeds.retain_grad()
         index = torch.repeat_interleave(torch.arange(speakers_per_batch), utterances_per_speaker).unsqueeze(-1).to(p1.device)
         p = torch.scatter(p1, 1, index, p2)
         
@@ -101,7 +103,7 @@ class SpeakerEncoder(nn.Module):
         speakers_per_batch, utterances_per_speaker = embeds.shape[:2]
         
         # Loss
-        sim_matrix = self.similarity_matrix(embeds)
+        sim_matrix, *_ = self.similarity_matrix(embeds)
         sim_matrix = sim_matrix.reshape((speakers_per_batch * utterances_per_speaker, 
                                          speakers_per_batch))
         target = torch.repeat_interleave(torch.arange(speakers_per_batch), utterances_per_speaker).to(sim_matrix.device)
