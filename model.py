@@ -10,7 +10,6 @@ from sklearn.metrics import roc_curve
 from scipy.optimize import brentq
 
 __DEBUG__ = []
-
 class SpeakerEncoder(nn.Layer):
     def __init__(self, n_mel, num_layers, hidden_size, output_size):
         super().__init__()
@@ -68,7 +67,7 @@ class SpeakerEncoder(nn.Layer):
         mask_p1 = paddle.scatter(ones, index, zeros)
         p = p1 * mask_p1 + (1 - mask_p1) * paddle.scatter(ones, index, p2)
         # p = paddle.scatter(p1, index, p2)
-        __DEBUG__.append(embeds)
+        # __DEBUG__.append(embeds)
         
         p = p * self.similarity_weight + self.similarity_bias # neg
         p = p.reshape([speakers_per_batch * utterances_per_speaker, speakers_per_batch])
