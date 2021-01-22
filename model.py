@@ -78,8 +78,6 @@ class SpeakerEncoder(nn.Layer):
             g = p._grad_ivar()
             g[...] = g * 0.01
 
-        
-
     def loss(self, embeds):
         """
         Computes the softmax loss according the section 2.1 of GE2E.
@@ -112,6 +110,5 @@ class SpeakerEncoder(nn.Layer):
             eer = brentq(lambda x: 1. - x - interp1d(fpr, tpr)(x), 0., 1.)
             
         return loss, eer
-
 
 
