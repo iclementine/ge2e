@@ -9,24 +9,16 @@ from scipy.interpolate import interp1d
 from sklearn.metrics import roc_curve
 from scipy.optimize import brentq
 
-__DEBUG__ = []
+
 class SpeakerEncoder(nn.Layer):
-    def __init__(self, n_mel, num_layers, hidden_size, output_size):
+    def __init__(self, n_mels, num_layers, hidden_size, output_size):
         super().__init__()
-        self.lstm = nn.LSTM(n_mel, hidden_size, num_layers)
-        self.linear = nn.Linear(
-            hidden_size, output_size,
-            #weight_attr=ParamAttr(learning_rate=0.5),
-            #bias_attr=ParamAttr(learning_rate=0.5)
-        )
+        self.lstm = nn.LSTM(n_mels, hidden_size, num_layers)
+        self.linear = nn.Linear(hidden_size, output_size)
         self.similarity_weight = self.create_parameter(
-            [1], default_initializer=I.Constant(10.), 
-            #attr=ParamAttr(learning_rate=0.01)
-            )
+            [1], default_initializer=I.Constant(10.))
         self.similarity_bias = self.create_parameter(
-            [1], default_initializer=I.Constant(-5.), 
-            #attr=ParamAttr(learning_rate=0.01)
-            )
+            [1], default_initializer=I.Constant(-5.))
 
     def forward(self, utterances, initial_states=None):
         out, (h, c) = self.lstm(utterances, initial_states)
@@ -56,18 +48,18 @@ class SpeakerEncoder(nn.Layer):
         p2 = paddle.bmm(embeds.reshape([-1, 1, embed_dim]), 
                         normalized_centroids_excl.reshape([-1, embed_dim, 1])) # (NM, 1, 1)
         p2 = p2.reshape([-1]) # （NM)
-        # print("p2: ", p2.shape)
+
+        # begin: alternative implementation for scatter
         with paddle.no_grad():
             index = paddle.arange(0, speakers_per_batch * utterances_per_speaker, dtype="int64").reshape([speakers_per_batch, utterances_per_speaker])
             index = index * speakers_per_batch + paddle.arange(0, speakers_per_batch, dtype="int64").unsqueeze(-1)
-            # import pdb; pdb.set_trace()
             index = paddle.reshape(index, [-1])
         ones = paddle.ones([speakers_per_batch * utterances_per_speaker * speakers_per_batch])
         zeros = paddle.zeros_like(index, dtype=ones.dtype)
         mask_p1 = paddle.scatter(ones, index, zeros)
         p = p1 * mask_p1 + (1 - mask_p1) * paddle.scatter(ones, index, p2)
+        # end: alternative implementation for scatter
         # p = paddle.scatter(p1, index, p2)
-        # __DEBUG__.append(embeds)
         
         p = p * self.similarity_weight + self.similarity_bias # neg
         p = p.reshape([speakers_per_batch * utterances_per_speaker, speakers_per_batch])

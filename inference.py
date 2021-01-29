@@ -1,13 +1,11 @@
-from params_data import *
 from model import SpeakerEncoder
-from audio import preprocess_wav   # We want to expose this function from here
+from audio_processor import SpeakerVerificationPreprocessor
 from matplotlib import cm
-import audio
 from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from config import get_cfg_defaults
-from parakeet.training import default_argument_parser
+import argparse
 import paddle
 
 _model = None # type: SpeakerEncoder
@@ -28,7 +26,7 @@ def load_model(config, weights_fpath: Path):
     #   was saved on. Worth investigating.
     global _model
     _model = SpeakerEncoder(
-            config.data.n_mel, 
+            config.data.n_mels, 
             config.model.num_layers,
             config.model.hidden_size,
             config.model.embedding_size)
@@ -60,7 +58,7 @@ def embed_frames_batch(frames_batch):
     return embed
 
 
-def compute_partial_slices(n_samples, partial_utterance_n_frames=partials_n_frames,
+def compute_partial_slices(n_samples, partial_utterance_n_frames, hop_length, 
                            min_pad_coverage=0.75, overlap=0.5):
     """
     Computes where to split an utterance waveform and its corresponding mel spectrogram to obtain 
@@ -89,8 +87,8 @@ def compute_partial_slices(n_samples, partial_utterance_n_frames=partials_n_fram
     assert 0 <= overlap < 1
     assert 0 < min_pad_coverage <= 1
     
-    samples_per_frame = int((sampling_rate * mel_window_step / 1000))
-    n_frames = int(np.ceil((n_samples + 1) / samples_per_frame))
+    # samples_per_frame = int((sampling_rate * mel_window_step / 1000))
+    n_frames = int(np.ceil((n_samples + 1) / hop_length))
     frame_step = max(int(np.round(partial_utterance_n_frames * (1 - overlap))), 1)
 
     # Compute the slices
@@ -98,7 +96,7 @@ def compute_partial_slices(n_samples, partial_utterance_n_frames=partials_n_fram
     steps = max(1, n_frames - partial_utterance_n_frames + frame_step + 1)
     for i in range(0, steps, frame_step):
         mel_range = np.array([i, i + partial_utterance_n_frames])
-        wav_range = mel_range * samples_per_frame
+        wav_range = mel_range * hop_length
         mel_slices.append(slice(*mel_range))
         wav_slices.append(slice(*wav_range))
         
@@ -112,7 +110,7 @@ def compute_partial_slices(n_samples, partial_utterance_n_frames=partials_n_fram
     return wav_slices, mel_slices
 
 
-def embed_utterance(wav, using_partials=True, return_partials=False, **kwargs):
+def embed_utterance(processor, wav, partial_utterance_n_frames, using_partials=True, return_partials=False):
     """
     Computes an embedding for a single utterance.
     
@@ -133,20 +131,20 @@ def embed_utterance(wav, using_partials=True, return_partials=False, **kwargs):
     """
     # Process the entire utterance if not using partials
     if not using_partials:
-        frames = audio.wav_to_mel_spectrogram(wav)
+        frames = processor.melspectrogram(wav)
         embed = embed_frames_batch(frames[None, ...])[0]
         if return_partials:
             return embed, None, None
         return embed
     
     # Compute where to split the utterance into partials and pad if necessary
-    wave_slices, mel_slices = compute_partial_slices(len(wav), **kwargs)
+    wave_slices, mel_slices = compute_partial_slices(len(wav), partial_utterance_n_frames, processor.hop_length)
     max_wave_length = wave_slices[-1].stop
     if max_wave_length >= len(wav):
         wav = np.pad(wav, (0, max_wave_length - len(wav)), "constant")
     
     # Split the utterance into partials
-    frames = audio.wav_to_mel_spectrogram(wav)
+    frames = processor.melspectrogram(wav)
     frames_batch = np.array([frames[s] for s in mel_slices])
     # TODO: batch multiple utterances' partial specs together
     partial_embeds = embed_frames_batch(frames_batch)
@@ -185,17 +183,35 @@ def plot_embedding_as_heatmap(embed, ax=None, title="", shape=None, color_range=
 def main(config, args):
     paddle.set_device(args.device)
     load_model(config, args.checkpoint_path)
-    wav = audio.preprocess_wav(args.input)
-    embed = embed_utterance(wav, using_partials=True, return_partials=False)
+
+    c = config.data
+    processor = SpeakerVerificationPreprocessor(
+        c.sampling_rate, c.audio_norm_target_dBFS, c.vad_window_length,
+        c.vad_moving_average_width, c.vad_max_silence_length,
+        c.mel_window_length, c.mel_window_step, c.n_mels)
+    wav = processor.preprocess_wav(args.input)
+    embed = embed_utterance(processor, wav, c.partials_n_frames, using_partials=True, return_partials=False)
     print("embed: \n", embed)
 
 
 
 if __name__ == "__main__":
     config = get_cfg_defaults()
-    parser = default_argument_parser()
-    
+    parser = argparse.ArgumentParser(description="compute utterance embed.")
+    parser.add_argument("--config", metavar="FILE", help="path of the config file to overwrite to default config with.")
     parser.add_argument("--input", type=str, help="path of the audio_file")
+    parser.add_argument("--output", metavar="OUTPUT_DIR", help="path to save checkpoint and logs.")
+
+    # load from saved checkpoint
+    parser.add_argument("--checkpoint_path", type=str, help="path of the checkpoint to load")
+
+    # running
+    parser.add_argument("--device", type=str, choices=["cpu", "gpu"], help="device type to use, cpu and gpu are supported.")
+    parser.add_argument("--nprocs", type=int, default=1, help="number of parallel processes to use.")
+
+    # overwrite extra config and default config
+    parser.add_argument("--opts", nargs=argparse.REMAINDER, help="options to overwrite --config file and the default config, passing in KEY VALUE pairs")
+
     args = parser.parse_args()
     if args.config:
         config.merge_from_file(args.config)
