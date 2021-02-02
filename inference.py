@@ -189,8 +189,16 @@ def main(config, args):
         c.sampling_rate, c.audio_norm_target_dBFS, c.vad_window_length,
         c.vad_moving_average_width, c.vad_max_silence_length,
         c.mel_window_length, c.mel_window_step, c.n_mels)
-    wav = processor.preprocess_wav(args.input)
-    embed = embed_utterance(processor, wav, c.partials_n_frames, using_partials=True, return_partials=False)
+
+    ifpaths = Path(args.input).glob("*.npy")
+    output_dir = Path(args.output)
+    for ifpath in ifpaths:
+        ofpath = output_dir / ifpath.stem
+        wav = np.load(fpaths)
+        wav = processor.preprocess_wav(wav, c.sample_rate)
+        embed = embed_utterance(processor, wav, c.partials_n_frames, using_partials=True, return_partials=False)
+        np.save(ofpath, embed)
+
     print("embed: \n", embed)
 
 
