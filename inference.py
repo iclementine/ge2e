@@ -7,6 +7,7 @@ import numpy as np
 from config import get_cfg_defaults
 import argparse
 import paddle
+import tqdm
 
 _model = None # type: SpeakerEncoder
 
@@ -190,12 +191,13 @@ def main(config, args):
         c.vad_moving_average_width, c.vad_max_silence_length,
         c.mel_window_length, c.mel_window_step, c.n_mels)
 
-    ifpaths = Path(args.input).glob("*.npy")
+    ifpaths = list(Path(args.input).glob("*.npy"))
     output_dir = Path(args.output)
-    for ifpath in ifpaths:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for ifpath in tqdm.tqdm(ifpaths):
         ofpath = output_dir / ifpath.stem
-        wav = np.load(fpaths)
-        wav = processor.preprocess_wav(wav, c.sample_rate)
+        wav = np.load(ifpath)
+        wav = processor.preprocess_wav(wav, c.sampling_rate)
         embed = embed_utterance(processor, wav, c.partials_n_frames, using_partials=True, return_partials=False)
         np.save(ofpath, embed)
 
