@@ -191,17 +191,20 @@ def main(config, args):
         c.vad_moving_average_width, c.vad_max_silence_length,
         c.mel_window_length, c.mel_window_step, c.n_mels)
 
-    ifpaths = list(Path(args.input).glob("*.npy"))
-    output_dir = Path(args.output)
+    input_dir = Path(args.input).expanduser()
+    ifpaths = list(input_dir.rglob("*.wav"))
+    print(f"{len(ifpaths)} utterances in total")
+    output_dir = Path(args.output).expanduser()
     output_dir.mkdir(parents=True, exist_ok=True)
     for ifpath in tqdm.tqdm(ifpaths):
-        ofpath = output_dir / ifpath.stem
-        wav = np.load(ifpath)
-        wav = processor.preprocess_wav(wav, c.sampling_rate)
+        rel_path = ifpath.relative_to(input_dir)
+        ofpath = (output_dir / rel_path).with_suffix("")
+        ofpath.parent.mkdir(parents=True, exist_ok=True)
+        wav = processor.preprocess_wav(ifpath)
         embed = embed_utterance(processor, wav, c.partials_n_frames, using_partials=True, return_partials=False)
         np.save(ofpath, embed)
 
-    print("embed: \n", embed)
+
 
 
 

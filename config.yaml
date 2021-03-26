@@ -1,0 +1,22 @@
+data:
+  audio_norm_target_dBFS: -30
+  inference_n_frames: 80
+  mel_window_length: 25
+  mel_window_step: 10
+  n_mels: 40
+  partials_n_frames: 160
+  sampling_rate: 16000
+  vad_max_silence_length: 6
+  vad_moving_average_width: 8
+  vad_window_length: 30
+model:
+  embedding_size: 256
+  hidden_size: 256
+  num_layers: 3
+training:
+  learning_rate_init: 0.0001
+  max_iteration: 1560000
+  save_interval: 10000
+  speakers_per_batch: 64
+  utterances_per_speaker: 10
+  valid_interval: 10000
